@@ -1,0 +1,103 @@
+---
+title: Effective Exercise Predictions Using Machine Learning
+author: "Kevin Clifford"
+output: html_document
+---
+
+## Background  
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+
+The training data for this project are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+
+## Data Preprocessing  
+```{r}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(rattle)
+```
+
+### Read the Data
+```{r}
+trainRaw <- read.csv("pml-training.csv")
+testRaw <- read.csv("pml-testing.csv")
+```
+
+### Select relevant predictors and setup train and test dataset
+```{r}
+missingCols <- sapply(testRaw, function (x) any(is.na(x) | x == ""))
+predictors <- !missingCols & grepl("belt|[^(fore)]arm|dumbbell|forearm", names(missingCols))
+predictorCols <- names(missingCols)[predictors]
+colsrelevant <- c("classe", predictorCols)
+trainRaw <- trainRaw[, colsrelevant]
+testRaw <- testRaw[, predictorCols]
+```
+
+### Split data into train and validation sets
+Split raw training set into training data set (75%) and a cross validation data set (25%)
+```{r}
+set.seed(12345) 
+inTrain <- createDataPartition(trainRaw$classe, p=0.75, list=F)
+trainData <- trainRaw[inTrain, ]
+valData <- trainRaw[-inTrain, ]
+```
+## Model the Data
+Using the Random Forest algorithm with 200 trees and 5-fold cross validation 
+```{r}
+RFCtrl <- trainControl(method="cv", 5)
+RFModel <- train(classe ~ ., data=trainData, method="rf", trControl=RFCtrl, ntree=200)
+RFModel
+```
+Validate the model against the validation dataset 
+```{r}
+RFPredict <- predict(RFModel, valData)
+confusionMatrix(valData$classe, RFPredict)
+```
+Accuracy:
+```{r}
+as.numeric(confusionMatrix(valData$classe, RFPredict)$overall[1])
+```
+Out-Of-Sample ERROR:
+```{r}
+1 - as.numeric(confusionMatrix(valData$classe, RFPredict)$overall[1])
+```
+Display the Model
+```{r}
+varImp(RFModel)
+```
+## Predict using downloaded Test dataSet
+Apply validated model against the Test data
+```{r}
+result <- predict(RFModel, testRaw)
+result
+``` 
+## Project Submission 
+Generate files for submission
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  path <- "results"
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=file.path(path, filename),quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(result)
+```  
+## Appendix Of Figures
+
+```{r}
+treeModel <- rpart(classe ~ ., data=trainData, method="class")
+prp(treeModel) 
+```
+
+```{r}
+fancyRpartPlot(treeModel) 
+```
